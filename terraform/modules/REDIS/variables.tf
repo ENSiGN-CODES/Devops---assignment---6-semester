@@ -1,0 +1,12 @@
+variable "redis_cluster_id" { type = string }
+variable "redis_node_type" { type = string }
+variable "redis_engine_version" { type = string }
+variable "redis_num_cache_nodes" { type = number }
+variable "redis_port" { type = number }
+variable "redis_maintenance_window" { type = string }
+variable "redis_snapshot_retention" { type = number }
+variable "redis_family" { type = string }
+variable "vpc_id" { type = string }
+variable "subnet_ids" { type = list(string) }
+variable "eks_security_group_id" { type = string }
+variable "tags" { type = map(string) }
