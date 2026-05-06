@@ -1,54 +1,48 @@
 # =============================================================
-# BACKEND DOCKERFILE - Multi-stage build for production
-# Stage 1: Builder (installs dependencies)
-# Stage 2: Runner (minimal final image)
+# BACKEND DOCKERFILE — Node.js (Express + PostgreSQL)
+# Multi-stage build for minimal, secure production image
+#
+# Stage 1: Builder  — installs ALL dependencies
+# Stage 2: Runner   — production deps only, non-root user
 # =============================================================
 
 # Stage 1: Builder
-FROM python:3.11-slim AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies only in builder stage
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Copy package files first — Docker caches this layer separately
+# Only re-runs npm ci if package.json actually changes
+COPY package.json package-lock.json* ./
+RUN npm ci
 
-# Copy only requirements first (layer caching - faster rebuilds)
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Copy rest of source
+COPY . .
 
 # -----------------------------------------------------------
 
-# Stage 2: Runner (final production image)
-FROM python:3.11-slim AS runner
+# Stage 2: Runner — lean, secure production image (~180MB vs ~1.1GB)
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Install only runtime dependencies (no build tools = smaller image)
-RUN apt-get update && apt-get install -y \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+# Production dependencies only
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production && npm cache clean --force
 
-# Copy installed packages from builder (not the full build toolchain)
-COPY --from=builder /root/.local /root/.local
+# Copy app from builder stage
+COPY --from=builder /app/server.js .
 
-# Copy application source code
-COPY . .
-
-# Security: run as non-root user
-# Never run containers as root in production
+# SECURITY: Create and use non-root user — never run containers as root
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 RUN chown -R appuser:appgroup /app
 USER appuser
 
-# Expose application port
-EXPOSE 8000
+# Port 3000 — matches app.listen(3000) in server.js
+EXPOSE 3000
 
-# Health check - Docker will mark container unhealthy if this fails
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+# Docker health check — uses /api/health (matches actual route in server.js)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-# Start command
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["node", "server.js"]
