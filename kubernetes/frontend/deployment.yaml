@@ -24,30 +24,30 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: <AWS_ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/fintech-frontend:latest
+          image: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/fintech-frontend:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 80    # Nginx serves on port 80
           env:
-            - name: REACT_APP_API_URL
-              value: "https://api.fintech-app.com"
+            - name: API_URL
+              value: "http://backend-service/api"   # K8s service discovery
           resources:
             requests:
               cpu: "100m"
-              memory: "128Mi"
+              memory: "64Mi"
             limits:
-              cpu: "250m"
-              memory: "256Mi"
+              cpu: "200m"
+              memory: "128Mi"
           readinessProbe:
             httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 10
+              path: /health   # Nginx /health route defined in Dockerfile
+              port: 80
+            initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 30
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
             periodSeconds: 10
 ---
 apiVersion: v1
@@ -55,8 +55,6 @@ kind: Service
 metadata:
   name: frontend-service
   namespace: fintech
-  labels:
-    app: frontend
 spec:
   selector:
     app: frontend
@@ -64,4 +62,4 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 3000
+      targetPort: 80
